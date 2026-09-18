@@ -5,6 +5,8 @@ _temp/
 *.log
 data.txt
 data_*.txt
+d.txt
+fr.txt
 
 # Python bytecode and caches
 __pycache__/

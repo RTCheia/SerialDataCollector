@@ -6,8 +6,8 @@ from pathlib import Path
 import time
 import traceback
 
-from acquisition_v5 import acquisition_main, make_shared, FRAMES, STATE, COMPLETE, FAILED
-from protocol_v5 import DEFAULT_RULES, FrameDecoder
+from acquisition import acquisition_main, make_shared, FRAMES, STATE, COMPLETE, FAILED
+from protocol import DEFAULT_RULES, FrameDecoder
 
 
 def test_frame(index):

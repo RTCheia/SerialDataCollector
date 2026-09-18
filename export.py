@@ -12,11 +12,11 @@ def export_session(session):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     import numpy as np
-    from protocol_v5 import PLOT_COLUMNS
+    from protocol import PLOT_COLUMNS
     folder = Path(session)
     log_dir = folder / "log"
     log_dir.mkdir(exist_ok=True)
-    logging.basicConfig(filename=log_dir / "export_v5.log", level=logging.INFO, encoding="utf-8", format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(filename=log_dir / "export.log", level=logging.INFO, encoding="utf-8", format="%(asctime)s %(levelname)s %(message)s")
     started = time.time()
     results = []
     for source in sorted(folder.glob("ch*/data.txt")):

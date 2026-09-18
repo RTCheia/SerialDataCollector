@@ -1,4 +1,4 @@
-﻿# Data and logs
+# Data and logs
 data/
 log/
 _temp/
@@ -17,6 +17,12 @@ __pycache__/
 build/
 dist/
 *.spec
+
+# Internal AI and Handover documentation
+AGENTS.md
+AI_LOG.md
+AI编程日志.md
+HANDOVER_ARCHITECTURE.md
 
 # System and editor files
 .DS_Store

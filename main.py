@@ -13,11 +13,11 @@ if __name__ == "__main__":
     mp.freeze_support()
     try:
         if "--self-test" in sys.argv:
-            from selftest_v5 import run_selftest
+            from selftest import run_selftest
             target = Path(sys.argv[sys.argv.index("--self-test") + 1])
             sys.exit(run_selftest(target))
         else:
-            from ui_v5 import run_gui
+            from ui import run_gui
             sys.exit(run_gui(application_root(), smoke_test="--ui-smoke-test" in sys.argv))
     except Exception:
         # 界面依赖导入阶段也要留下诊断日志，避免仅出现无控制台的错误弹窗。

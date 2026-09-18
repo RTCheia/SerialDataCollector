@@ -9,7 +9,7 @@ import threading
 import time
 from collections import deque
 
-from protocol_v5 import DEFAULT_RULES, PLOT_COLUMNS, FrameDecoder, format_row
+from protocol import DEFAULT_RULES, PLOT_COLUMNS, FrameDecoder, format_row
 
 # 状态由采集端单向发布，界面只读；错误信息另存 JSON 和阶段日志。
 STATE, RECEIVED, PROCESSED, FRAMES, ANOMALIES, BACKLOG, HIGH_WATER, DISCARDED, TAIL, LAST_COUNTER, FLUSHED = range(11)
@@ -73,9 +73,9 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
     folder.mkdir(parents=True, exist_ok=True)
     log_folder = folder / "log"
     log_folder.mkdir(exist_ok=True)
-    logger = logging.getLogger(f"acquisition_v5.{os.getpid()}")
+    logger = logging.getLogger(f"acquisition.{os.getpid()}")
     logger.setLevel(logging.INFO)
-    handler = logging.FileHandler(log_folder / "acquisition_v5.log", encoding="utf-8")
+    handler = logging.FileHandler(log_folder / "acquisition.log", encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(handler)
     started = time.time()

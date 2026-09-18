@@ -11,9 +11,9 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 import serial.tools.list_ports
 
-from acquisition_v5 import (acquisition_main, make_shared, STATE, RECEIVED, FRAMES, ANOMALIES,
+from acquisition import (acquisition_main, make_shared, STATE, RECEIVED, FRAMES, ANOMALIES,
                             BACKLOG, DISCARDED, TAIL, FLUSHED, RUNNING, COMPLETE, FAILED, QUEUE_CHUNKS)
-from protocol_v5 import load_rules
+from protocol import load_rules
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -300,7 +300,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 job["process"].join(timeout=0)
             self.set_active(False)
             if failed:
-                self.notice.setText("采集失败/中断，已保存的数据仍保留。请查看各通道 summary.json 和 log/acquisition_v5.log。")
+                self.notice.setText("采集失败/中断，已保存的数据仍保留。请查看各通道 summary.json 和 log/acquisition.log。")
             elif warnings:
                 self.notice.setText("文件已关闭并保存，但检测到计数或帧同步异常，请检查 summary.json。")
             else:
@@ -367,7 +367,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def export_plots(self):
         if not self.session or self.export_process:
             return
-        from export_v5 import export_session
+        from export import export_session
         self.export_process = self.ctx.Process(target=export_session, args=(str(self.session),))
         self.export_process.start()
         self.export_button.setEnabled(False)

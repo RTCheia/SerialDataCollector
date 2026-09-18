@@ -1,0 +1,26 @@
+﻿# Data and logs
+data/
+log/
+_temp/
+*.log
+data.txt
+data_*.txt
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+
+# Compiled Executables and build artifacts
+*.exe
+build/
+dist/
+*.spec
+
+# System and editor files
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

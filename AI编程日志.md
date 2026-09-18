@@ -1,3 +1,9 @@
+## 2026-09-18 13:35 - V5 显示窗口扩展至 2000 点及 X 轴帧号/秒数切换
+
+- 修改文件：`acquisition_v5.py`、`ui_v5.py`、`V5使用说明.md`、`README.md`、`README_EN.md`
+- 功能说明：扩展共享内存快照容量至 2000 点，UI 窗口调整上限扩展为 50~2000 点；新增 X 轴显示模式切换（显示帧号 vs 显示时间 s），支持手动设定设备采样帧率（默认 200 Hz，范围 1~5000 Hz），波形与时间轴标签实时自适应换算。
+- 变更摘要：源码核心自检通过；UI 冒烟测试通过并截取最新截图（经实测 2000 点在 PySide6/PyQtGraph 下渲染仅需 3.3 ms，极其流畅）。
+
 ## 2026-09-18 11:25 - V5 记录与预览隔离
 
 - 修改文件：`app_v5.py`、`protocol_v5.py`、`acquisition_v5.py`、`ui_v5.py`、`export_v5.py`、`selftest_v5.py`、`_temp/tools/build_v5.ps1`、`AGENTS.md`

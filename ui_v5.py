@@ -106,17 +106,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fps.setCurrentIndex(2)
         self.fps.currentIndexChanged.connect(self.set_fps)
         self.window = QtWidgets.QSpinBox()
-        self.window.setRange(50, 1000)
+        self.window.setRange(50, 2000)
         self.window.setSingleStep(50)
         self.window.setValue(500)
         self.window.setSuffix(" 点")
         self.window.valueChanged.connect(self.invalidate_preview)
+        self.x_mode = QtWidgets.QComboBox()
+        self.x_mode.addItems(["显示帧号", "显示时间 (s)"])
+        self.x_mode.currentIndexChanged.connect(self.on_x_mode_changed)
+        self.sample_rate = QtWidgets.QSpinBox()
+        self.sample_rate.setRange(1, 5000)
+        self.sample_rate.setValue(200)
+        self.sample_rate.setSuffix(" Hz")
+        self.sample_rate.setToolTip("设备采样帧率，用于将帧号换算为时间秒数 (默认 200 Hz)")
+        self.sample_rate.valueChanged.connect(self.invalidate_preview)
         self.auto_y = QtWidgets.QCheckBox("自动 Y 范围（每秒一次）")
         self.auto_y.setChecked(True)
         self.auto_y.toggled.connect(self.invalidate_preview)
         reset = QtWidgets.QPushButton("适配范围")
         reset.clicked.connect(self.fit_ranges)
-        for widget in [self.preview_channel, self.fps, QtWidgets.QLabel("显示窗口"), self.window, self.auto_y, reset]:
+        for widget in [self.preview_channel, self.fps, QtWidgets.QLabel("显示窗口"), self.window,
+                       QtWidgets.QLabel("X轴:"), self.x_mode, QtWidgets.QLabel("帧率:"), self.sample_rate,
+                       self.auto_y, reset]:
             plot_controls.addWidget(widget)
         plot_controls.addStretch()
         self.render_label = QtWidgets.QLabel("预览尚无数据")
@@ -183,6 +194,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, "curves") and not any(j["index"] == self.preview_channel.currentIndex() for j in self.jobs):
             for curve in self.curves:
                 curve.setData([], [])
+
+    def on_x_mode_changed(self, *_):
+        is_time = (self.x_mode.currentIndex() == 1)
+        label = "时间 (s)" if is_time else "采样序号"
+        if hasattr(self, "plots"):
+            for plot in self.plots:
+                plot.setLabel("bottom", label)
+        self.invalidate_preview()
 
     def toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
@@ -311,7 +330,9 @@ class MainWindow(QtWidgets.QMainWindow):
         start = time.perf_counter()
         try:
             version, count = int(preview[0]), int(preview[1])
-            key = (job["index"], version, self.window.value())
+            is_time = (self.x_mode.currentIndex() == 1)
+            rate = max(1, self.sample_rate.value())
+            key = (job["index"], version, self.window.value(), is_time, rate)
             if not count or key == self.last_preview:
                 return
             points = min(count, self.window.value())
@@ -319,10 +340,18 @@ class MainWindow(QtWidgets.QMainWindow):
             data = np.array(preview[offset:2 + count * 13]).reshape(points, 13)
         finally:
             lock.release()
+
+        if is_time:
+            x_data = data[:, 0] / rate
+            min_x, max_x = x_data[0], max(x_data[0] + (1.0 / rate), x_data[-1])
+        else:
+            x_data = data[:, 0]
+            min_x, max_x = x_data[0], max(x_data[0] + 1, x_data[-1])
+
         for index, curve in enumerate(self.curves):
-            curve.setData(data[:, 0], data[:, index + 1])
+            curve.setData(x_data, data[:, index + 1])
         for plot in self.plots:
-            plot.setXRange(data[0, 0], max(data[0, 0] + 1, data[-1, 0]), padding=0)
+            plot.setXRange(min_x, max_x, padding=0)
         if self.auto_y.isChecked() and time.perf_counter() >= self.next_scale:
             self.fit_ranges()
             self.next_scale = time.perf_counter() + 1
@@ -380,6 +409,7 @@ def run_gui(base, smoke_test=False):
         QtCore.QTimer.singleShot(2500, lambda: window.fps.setCurrentIndex(0))
         QtCore.QTimer.singleShot(3500, lambda: window.fps.setCurrentIndex(3))
         QtCore.QTimer.singleShot(4000, lambda: window.preview_channel.setCurrentIndex(2))
+        QtCore.QTimer.singleShot(4200, lambda: (window.window.setValue(2000), window.x_mode.setCurrentIndex(1)))
         QtCore.QTimer.singleShot(4500, lambda: window.fps.setCurrentIndex(2))
         QtCore.QTimer.singleShot(5000, lambda: window.grab().save(str(folder / "v5_preview.png")))
         QtCore.QTimer.singleShot(5500, window.stop_collection)

@@ -32,7 +32,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.next_scale = 0
         self.export_process = None
         self.running_announced = False
-        self.setWindowTitle("多串口数据采集 V5 · 记录优先")
+        self.setWindowTitle("多串口数据采集 V5.2 · 记录优先")
         self.resize(1460, 920)
         self.setMinimumSize(1080, 740)
         self.build_ui()
@@ -51,7 +51,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(root)
         layout = QtWidgets.QVBoxLayout(root)
         layout.setContentsMargins(20, 16, 20, 16)
-        title = QtWidgets.QLabel("多串口数据采集  V5")
+        title = QtWidgets.QLabel("多串口数据采集  V5.2")
         title.setObjectName("title")
         layout.addWidget(title)
         layout.addWidget(QtWidgets.QLabel("三路独立采集 · 完整 TXT 记录 · 预览不等待、不积压"))
@@ -166,7 +166,8 @@ class MainWindow(QtWidgets.QMainWindow):
             combo.addItem("请选择串口", "")
             for port in ports:
                 combo.addItem(f"{port.device} · {port.description}", port.device)
-            combo.addItem("仿真数据（200 Hz，不连接设备）", "SIM")
+            combo.addItem("仿真数据（200 Hz 正弦波）", "SIM")
+            combo.addItem("仿真回放 d.txt（200 Hz 真实板卡回放）", "SIM_D")
             found = combo.findData(old) if old else -1
             combo.setCurrentIndex(found if found >= 0 else (index + 1 if index < len(ports) else 0))
 
@@ -211,7 +212,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         selected = [(index, c) for index, c in enumerate(self.channels) if c["enabled"].isChecked()]
         ports = [c["port"].currentData() for _, c in selected]
-        physical = [p for p in ports if p != "SIM"]
+        physical = [p for p in ports if p not in ("SIM", "SIM_D")]
         if not selected or any(not p for p in ports) or len(set(physical)) != len(physical):
             QtWidgets.QMessageBox.warning(self, "串口设置", "请选择至少一路输入；启用通道必须选择串口，物理串口不能重复。")
             return

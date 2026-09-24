@@ -67,6 +67,59 @@ class SimulatedSerial:
         pass
 
 
+class DTextReplaySerial:
+    """加载 d.txt 真实硬件数据，按 200 Hz (61字节/帧，12.2KB/s) 循环回放。"""
+    def __init__(self, file_path=r"C:\Users\RTC\Desktop\222\d.txt", rate=200):
+        self.rate = rate
+        self.bytes_per_sec = rate * 61
+        self.start_time = None
+        self.sent_bytes = 0
+        raw = b""
+        alt_paths = [file_path, r"C:\Users\RTC\Desktop\222\demo\d.txt", "d.txt"]
+        for p in alt_paths:
+            if os.path.exists(p):
+                try:
+                    with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                        clean = "".join(c for c in f.read() if c in "0123456789abcdefABCDEF")
+                    if len(clean) % 2 != 0:
+                        clean = clean[:-1]
+                    raw = bytes.fromhex(clean)
+                    break
+                except Exception:
+                    continue
+        self.raw = raw
+
+    @property
+    def in_waiting(self):
+        if not self.raw:
+            return 0
+        if self.start_time is None:
+            self.start_time = time.perf_counter()
+        elapsed = time.perf_counter() - self.start_time
+        target_bytes = int(elapsed * self.bytes_per_sec)
+        return max(0, target_bytes - self.sent_bytes)
+
+    def read(self, size):
+        time.sleep(0.002)
+        if not self.raw:
+            return b""
+        avail = self.in_waiting
+        if avail <= 0:
+            return b""
+        to_read = min(size, avail)
+        start_pos = self.sent_bytes % len(self.raw)
+        self.sent_bytes += to_read
+        if start_pos + to_read <= len(self.raw):
+            return self.raw[start_pos : start_pos + to_read]
+        else:
+            first = self.raw[start_pos:]
+            rest = to_read - len(first)
+            return first + self.raw[:rest]
+
+    def close(self):
+        pass
+
+
 def acquisition_main(config, status, preview, stop_event, serial_factory=None):
     """进程入口；正常结束须接收线程退出、记录队列排空且文件同步成功。"""
     folder = Path(config["folder"])
@@ -137,6 +190,8 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
         with open(folder / "data.txt", "x", encoding="utf-8", buffering=262144) as txt:
             if serial_factory:
                 ser = serial_factory()
+            elif config["port"] == "SIM_D":
+                ser = DTextReplaySerial(rate=config.get("rate", 200))
             elif config["port"] == "SIM":
                 ser = SimulatedSerial(config.get("rate", 200))
             else:
@@ -146,6 +201,10 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
                     ser.set_buffer_size(rx_size=262144)
                 except (AttributeError, OSError, ValueError) as exc:
                     logger.warning("驱动接收缓冲扩容未生效，使用驱动默认值: %s", exc)
+                try:
+                    ser.reset_input_buffer()
+                except Exception:
+                    pass
             status[STATE] = RUNNING
             reader = threading.Thread(target=receive, name="serial-reader", daemon=False)
             reader.start()

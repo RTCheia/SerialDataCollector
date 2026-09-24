@@ -83,7 +83,7 @@ SerialDataCollector/
 
 ### 1. 直接运行 Release 独立可执行程序
 若不需要修改源码，可前往 **[GitHub Releases](https://github.com/RTCheia/SerialDataCollector/releases)** 下载最新编译好的独立程序：
-- 文件名：`SerialDataCollector_V5_1.exe`
+- 文件名：`SerialDataCollector_V5_2.exe`
 - 无需安装 Python 环境，双击即可运行。
 
 ### 2. 源码环境运行

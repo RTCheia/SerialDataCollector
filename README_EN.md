@@ -82,7 +82,7 @@ SerialDataCollector/
 
 ### 1. Download Pre-compiled Binary (Releases)
 If you do not wish to set up Python, grab the latest standalone executable from **[GitHub Releases](https://github.com/RTCheia/SerialDataCollector/releases)**:
-- File: `SerialDataCollector_V5_1.exe`
+- File: `SerialDataCollector_V5_2.exe`
 - Standalone portable executable; no Python installation required.
 
 ### 2. Run from Source

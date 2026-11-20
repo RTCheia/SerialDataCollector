@@ -19,12 +19,18 @@ __pycache__/
 build/
 dist/
 *.spec
+# 目录版发布产物（onedir）：整个目录都是二进制，不入库
+SerialDataCollector_V*/
+
+# 采集数据打包
+data.zip
 
 # Internal AI and Handover documentation
 AGENTS.md
 AI_LOG.md
 AI编程日志.md
 HANDOVER_ARCHITECTURE.md
+.workbuddy/
 
 # System and editor files
 .DS_Store

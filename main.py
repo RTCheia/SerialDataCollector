@@ -1,4 +1,4 @@
-"""V5 启动入口：冻结程序先处理子进程参数，再导入 Qt。"""
+"""V7.1 启动入口：冻结程序先处理子进程参数，再导入 Qt。"""
 import multiprocessing as mp
 from pathlib import Path
 import sys
@@ -25,6 +25,6 @@ if __name__ == "__main__":
         import datetime
         log_dir = application_root() / "log"
         log_dir.mkdir(exist_ok=True)
-        with (log_dir / "app_v5.log").open("a", encoding="utf-8") as stream:
+        with (log_dir / "app_v7_1.log").open("a", encoding="utf-8") as stream:
             stream.write(f"\n{datetime.datetime.now().isoformat()} 启动/运行失败\n{traceback.format_exc()}\n")
         raise

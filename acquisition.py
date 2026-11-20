@@ -12,7 +12,7 @@ from collections import deque
 from protocol import DEFAULT_RULES, PLOT_COLUMNS, FrameDecoder, format_row
 
 # 状态由采集端单向发布，界面只读；错误信息另存 JSON 和阶段日志。
-STATE, RECEIVED, PROCESSED, FRAMES, ANOMALIES, BACKLOG, HIGH_WATER, DISCARDED, TAIL, LAST_COUNTER, FLUSHED = range(11)
+STATE, RECEIVED, PROCESSED, FRAMES, ANOMALIES, BACKLOG, HIGH_WATER, DISCARDED, TAIL, LAST_COUNTER, FLUSHED, RATE = range(12)
 STARTING, RUNNING, STOPPING, COMPLETE, FAILED = 0, 1, 2, 3, -1
 PREVIEW_POINTS = 2000
 PREVIEW_WIDTH = 13
@@ -21,7 +21,7 @@ QUEUE_CHUNKS = 1024  # 最多 1024 块，每块至多 4096 字节；容量时间
 
 def make_shared(ctx):
     """固定大小共享内存，不使用会无限积压的逐帧 UI 消息队列。"""
-    return ctx.Array("d", 11, lock=False), ctx.Array("d", 2 + PREVIEW_POINTS * PREVIEW_WIDTH), ctx.Event()
+    return ctx.Array("d", 12, lock=False), ctx.Array("d", 2 + PREVIEW_POINTS * PREVIEW_WIDTH), ctx.Event()
 
 
 def publish_preview(preview, history, total):
@@ -69,15 +69,23 @@ class SimulatedSerial:
 
 class DTextReplaySerial:
     """加载 d.txt 真实硬件数据，按 200 Hz (61字节/帧，12.2KB/s) 循环回放。"""
-    def __init__(self, file_path=r"C:\Users\RTC\Desktop\222\d.txt", rate=200):
+    # [2026-11-09] 工程目录从 Desktop\222\demo 迁到 Desktop\HMI\demo，
+    # 原先写死的绝对路径已经不存在，回放模式会静默拿到空数据。改成
+    # "本模块同目录的 d.txt"优先，再退回旧路径，迁移到任何位置都不影响自检。
+    REPLAY_PATH = Path(__file__).resolve().parent / "d.txt"
+
+    def __init__(self, file_path=None, rate=200):
         self.rate = rate
         self.bytes_per_sec = rate * 61
         self.start_time = None
         self.sent_bytes = 0
         raw = b""
-        alt_paths = [file_path, r"C:\Users\RTC\Desktop\222\demo\d.txt", "d.txt"]
+        alt_paths = [Path(file_path) if file_path else None,
+                     self.REPLAY_PATH, Path("d.txt"),
+                     Path(r"C:\Users\RTC\Desktop\222\d.txt"),
+                     Path(r"C:\Users\RTC\Desktop\222\demo\d.txt")]
         for p in alt_paths:
-            if os.path.exists(p):
+            if p is not None and p.exists():
                 try:
                     with open(p, "r", encoding="utf-8", errors="ignore") as f:
                         clean = "".join(c for c in f.read() if c in "0123456789abcdefABCDEF")
@@ -120,7 +128,7 @@ class DTextReplaySerial:
         pass
 
 
-def acquisition_main(config, status, preview, stop_event, serial_factory=None):
+def acquisition_main(config, status, preview, stop_event, serial_factory=None, cmd_queue=None):
     """进程入口；正常结束须接收线程退出、记录队列排空且文件同步成功。"""
     folder = Path(config["folder"])
     folder.mkdir(parents=True, exist_ok=True)
@@ -132,6 +140,12 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(handler)
     started = time.time()
+    # [诊断] 记录每块数据真正到达本机的时刻：perf_counter 是硬件计数器，不受系统
+    # 时钟跳变影响，可用来判断"帧数除以时长"得到的帧率为什么和 rate_hz 对不上。
+    # 输出 frame_times.csv，一行 = 一次解码，n_rows 就是这一块里有几帧。
+    started_perf = time.perf_counter()
+    first_arrival = None
+    last_arrival = None
     errors = []
     chunks = queue.Queue(maxsize=QUEUE_CHUNKS)
     reader_done = threading.Event()
@@ -145,6 +159,16 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
         """读取路径没有 GUI、解码、文本格式化或磁盘操作。"""
         try:
             while not stop_event.is_set() and not writer_failed.is_set():
+                if cmd_queue is not None:
+                    while True:
+                        try:
+                            cmd = cmd_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if cmd and hasattr(ser, "write"):
+                            ser.write(cmd)
+                            if hasattr(ser, "flush"):
+                                ser.flush()
                 data = ser.read(min(4096, max(1, ser.in_waiting)))
                 if data:
                     status[RECEIVED] += len(data)
@@ -187,7 +211,9 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
         logger.info("运行开始 port=%s baud=%s", config["port"], config["baud"])
         # 独占创建防止覆盖旧记录，串口打开前先确认输出目录可写。
         # [替换为] 用户仅需短时 TXT 记录，不生成原始二进制文件。
-        with open(folder / "data.txt", "x", encoding="utf-8", buffering=262144) as txt:
+        with open(folder / "data.txt", "x", encoding="utf-8", buffering=262144) as txt, \
+                open(folder / "frame_times.csv", "w", encoding="utf-8", buffering=65536) as frame_times:
+            frame_times.write("host_perf_s,n_rows,cumulative_frames\n")
             if serial_factory:
                 ser = serial_factory()
             elif config["port"] == "SIM_D":
@@ -215,14 +241,22 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
                 except queue.Empty:
                     data = b""
                 if data:
+                    arrival = time.perf_counter()
+                    if first_arrival is None:
+                        first_arrival = arrival
+                    last_arrival = arrival
                     rows = decoder.feed(data)
                     txt.writelines(format_row(row, config["rules"]) for row in rows)
+                    if rows:
+                        frame_times.write(f"{arrival - started_perf:.6f},{len(rows)},{status[FRAMES]}\n")
                     status[PROCESSED] += len(data)
                     for row in rows:
                         history.append([status[FRAMES]] + [row[c] for c in PLOT_COLUMNS])
                         status[FRAMES] += 1
                     status[ANOMALIES] = decoder.anomalies
                     status[DISCARDED] = decoder.discarded
+                    # 帧头 0x91→1000 Hz(IMU 板)、0x92→50 Hz(UWB 板)自动识别；0x90 老格式保持 0，由界面手动帧率兜底。
+                    status[RATE] = decoder.rate
                     status[LAST_COUNTER] = decoder.previous if decoder.previous is not None else -1
                     status[BACKLOG] = chunks.qsize()
                 now = time.perf_counter()
@@ -257,15 +291,25 @@ def acquisition_main(config, status, preview, stop_event, serial_factory=None):
                 errors.append(f"串口关闭失败: {exc}")
         status[STATE] = FAILED if errors else COMPLETE
         status[TAIL] = len(decoder.buffer)
+        # [诊断] 数据本身的跨度与实测帧率：拿它和 duration_seconds/rate_hz 对照，
+        # 立刻能看出"帧数比 时长×标称帧率 多"到底出在采集端还是设备端。
+        span = (last_arrival - first_arrival) if (first_arrival is not None and last_arrival is not None) else None
         summary = {
             "state": "failed" if errors else "complete", "port": config["port"], "baud": config["baud"],
             "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)),
             "duration_seconds": round(time.time() - started, 3),
+            "data_span_seconds": round(span, 3) if span else None,
+            "frames_per_second": round(int(status[FRAMES]) / span, 2) if span else None,
+            "first_frame_at": (time.strftime("%H:%M:%S", time.localtime(started + first_arrival - started_perf))
+                               + f".{(started + first_arrival - started_perf) % 1 * 1000:03.0f}"
+                               if first_arrival is not None else None),
             "received_bytes": int(status[RECEIVED]), "processed_bytes": int(status[PROCESSED]),
             "written_frames": int(status[FRAMES]), "flushed_frames": int(status[FLUSHED]),
             "counter_anomalies": decoder.anomalies, "resync_discarded_bytes": decoder.discarded,
             "trailing_bytes": len(decoder.buffer), "queue_high_water_chunks": int(status[HIGH_WATER]),
             "checksum_verified": False, "errors": errors, "rules": config["rules"],
+            "frame_header": (f"EB {decoder.kind:02X}" if decoder.kind else None),
+            "rate_hz": (int(status[RATE]) if int(status[RATE]) else None),
         }
         try:
             (folder / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

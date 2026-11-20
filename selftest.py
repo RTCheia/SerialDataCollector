@@ -6,8 +6,12 @@ from pathlib import Path
 import time
 import traceback
 
+import numpy as np
+
 from acquisition import acquisition_main, make_shared, FRAMES, STATE, COMPLETE, FAILED
 from protocol import DEFAULT_RULES, FrameDecoder
+from session_data import (CSV_NAMES, apply_filter, discover_channels, export_processed_csv,
+                          load_channel, moving_average)
 
 
 def test_frame(index):
@@ -99,6 +103,40 @@ def run_selftest(output):
             assert summary["received_bytes"] == summary["processed_bytes"] == len(payload)
             assert summary["flushed_frames"] == 3000
         result["checks"].append("三路各 3000 帧共 9000 帧逐行核验；UI 预览锁一直占用时仍完整写入 TXT，且无 BIN")
+        # V7.1：看板从真实落盘 TXT 加载，滤波不改变输入，CSV 保留全部采样点。
+        assert [item.name for item in discover_channels(output)] == ["ch1", "ch2", "ch3"]
+        channel = load_channel(output, "ch1")
+        original = channel.values.copy()
+        filtered = moving_average(channel.values, 5)
+        assert channel.frame_count == 3000 and channel.values.shape == (3000, 12)
+        assert filtered.shape == original.shape and np.array_equal(channel.values, original)
+        assert np.allclose(moving_average([[0.], [0.], [9.], [0.], [0.]], 3).ravel(), [0., 3., 3., 3., 0.])
+        # 四阶低通保留低频/直流，一阶高通去直流，带通叠加两者。
+        sample_rate = 1000.0
+        times = np.arange(2000) / sample_rate
+        synthetic = np.column_stack([2.0 + np.sin(2 * np.pi * 5 * times),
+                                     -1.0 + np.sin(2 * np.pi * 20 * times),
+                                     0.5 + np.sin(2 * np.pi * 50 * times)])
+        lowpassed = apply_filter(synthetic, dict(method="lowpass", low_cut=160), sample_rate)
+        highpassed = apply_filter(synthetic, dict(method="highpass", high_cut=1.0), sample_rate)
+        bandpassed = apply_filter(synthetic, dict(method="bandpass", low_cut=160, high_cut=1.0), sample_rate)
+        assert lowpassed.shape == synthetic.shape and not np.array_equal(lowpassed, synthetic)
+        assert np.allclose(lowpassed[1000:].mean(axis=0), [2.0, -1.0, 0.5], atol=0.03)
+        assert np.all(np.abs(highpassed[1000:].mean(axis=0)) < 0.03)
+        assert np.all(np.abs(bandpassed[1000:].mean(axis=0)) < 0.03)
+        try:
+            apply_filter(synthetic, dict(method="lowpass", low_cut=600), sample_rate)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("超过奈奎斯特频率的低通截止值必须被拒绝")
+        csv_path = export_processed_csv(channel, filtered, output / "analysis_test" / "processed.csv", 1000)
+        with csv_path.open(encoding="utf-8-sig", newline="") as stream:
+            lines = stream.read().splitlines()
+        assert len(lines) == 3001 and tuple(lines[0].split(",")) == CSV_NAMES
+        assert all(len(line.split(",")) == 16 for line in lines)
+        assert lines[1].startswith("0,0,0.000000000,") and lines[-1].startswith("2999,183,2.999000000,")
+        result["checks"].append("V7.1 看板数据：真实 TXT 加载、原始数组不变、移动平均、四阶低通/一阶高通/带通、奈奎斯特保护和 3000 帧完整 CSV 导出通过")
         status, preview, event = make_shared(ctx)
         config = dict(folder=str(output / "disconnect"), port="TEST", baud=230440, rules=DEFAULT_RULES)
         process = ctx.Process(target=acquisition_main, args=(config, status, preview, event, partial(ReplaySerial, payload[:6100], True)))

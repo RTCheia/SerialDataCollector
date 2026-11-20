@@ -4,14 +4,21 @@ import time
 import serial
 import serial.tools.list_ports
 
-def send_simulated_stream_multi(port_names, baudrate=230400, rate_hz=200, d_file=r"C:\Users\RTC\Desktop\222\d.txt"):
+DEFAULT_D_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "d.txt")
+
+
+def send_simulated_stream_multi(port_names, baudrate=230400, rate_hz=200, d_file=None):
     """
     支持同时打开 1~3 个串口，按 200 Hz (230400 波特率) 同步回放 d.txt 数据。
     """
-    alt_paths = [d_file, r"C:\Users\RTC\Desktop\222\demo\d.txt", "d.txt"]
+    # [2026-11-09] 工程目录已从 Desktop\222\demo 迁走，原来写死的绝对路径失效；
+    # 改为优先用本脚本同目录的 d.txt。
+    alt_paths = [d_file, DEFAULT_D_FILE, "d.txt",
+                 r"C:\Users\RTC\Desktop\222\d.txt",
+                 r"C:\Users\RTC\Desktop\222\demo\d.txt"]
     target_d = None
     for p in alt_paths:
-        if os.path.exists(p):
+        if p and os.path.exists(p):
             target_d = p
             break
 

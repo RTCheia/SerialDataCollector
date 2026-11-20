@@ -12,7 +12,7 @@ def export_session(session):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     import numpy as np
-    from protocol import PLOT_COLUMNS
+    from plot_metadata import PLOT_COLORS, PLOT_COLUMNS, PLOT_GROUPS
     folder = Path(session)
     log_dir = folder / "log"
     log_dir.mkdir(exist_ok=True)
@@ -25,6 +25,14 @@ def export_session(session):
                 count = sum(1 for line in stream if line.strip())
             if not count:
                 continue
+            # 采样率取自采集摘要（IMU 板 1000 Hz / UWB 板 50 Hz 自动识别），老记录没有该字段时按 1000 Hz。
+            rate = 1000
+            summary_path = source.parent / "summary.json"
+            if summary_path.exists():
+                try:
+                    rate = json.loads(summary_path.read_text(encoding="utf-8")).get("rate_hz") or 1000
+                except Exception:
+                    logging.warning("采样率读取失败，按 1000 Hz 处理 %s", summary_path)
             bucket = max(1, (count + 9999) // 10000)
             xs, mins, maxs, block = [], [], [], []
             with source.open(encoding="utf-8") as stream:
@@ -33,7 +41,7 @@ def export_session(session):
                     block.append([float(row[c]) for c in PLOT_COLUMNS])
                     if len(block) >= bucket or index == count - 1:
                         values = np.asarray(block)
-                        xs.append(index - (len(block) - 1) / 2)
+                        xs.append((index - (len(block) - 1) / 2) / rate)
                         mins.append(values.min(axis=0))
                         maxs.append(values.max(axis=0))
                         block.clear()
@@ -43,20 +51,18 @@ def export_session(session):
             fig = Figure(figsize=(18, 8), dpi=150, constrained_layout=True)
             FigureCanvasAgg(fig)
             axes = fig.subplots(2, 2).flatten()
-            titles = ["IMU 角速度 (deg/s)", "IMU 线加速度 (m/s²)", "大量程加速度 (m/s²)", "UWB 位置 (m)"]
-            names = [("wx", "wy", "wz"), ("ax", "ay", "az"), ("X", "Y", "Z"), ("pos_x", "pos_y", "pos_z")]
-            for group, ax in enumerate(axes):
-                for axis, color in enumerate(["#dc2626", "#16a34a", "#2563eb"]):
+            for group, (spec, ax) in enumerate(zip(PLOT_GROUPS, axes)):
+                for axis, color in enumerate(PLOT_COLORS):
                     column = group * 3 + axis
                     if bucket == 1:
-                        ax.plot(xs, low[:, column], color=color, linewidth=0.6, label=names[group][axis])
+                        ax.plot(xs, low[:, column], color=color, linewidth=0.6, label=spec["names"][axis])
                     else:
-                        ax.fill_between(xs, low[:, column], high[:, column], color=color, alpha=0.35, label=names[group][axis])
-                ax.set_title(titles[group])
-                ax.set_xlabel("采样序号")
+                        ax.fill_between(xs, low[:, column], high[:, column], color=color, alpha=0.35, label=spec["names"][axis])
+                ax.set_title(f"{spec['title']} ({spec['unit']})")
+                ax.set_xlabel("时间 (s)")
                 ax.legend()
                 ax.grid(alpha=0.2)
-            fig.suptitle(f"{source.parent.name} · 完整记录 {count:,} 帧 · 峰值包络分组 {bucket} 帧")
+            fig.suptitle(f"{source.parent.name} · 完整记录 {count:,} 帧 · {rate} Hz · 峰值包络分组 {bucket} 帧")
             output = source.with_name("waveform.png")
             fig.savefig(output)
             results.append(dict(file=str(output), state="success", frames=count, bucket=bucket))
